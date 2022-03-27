@@ -1,0 +1,289 @@
+# git under the hood
+
+## About hashes
+
+------
+
+### The sha1 hash
+
+```
+❯ echo "Hello, Git" | sha1sum
+c9d5d04925b93d2fb99c73ab2b5869bde7405ca4  -
+```
+
+Note that `echo` will add a line break into the string
+
+To avoid the new line, add the `-n` switch:
+
+```
+❯ echo -n "Hello, Git" | sha1sum
+0a2b198f595e55060dec9f0e196c10de86f2ca1c  -
+
+❯ echo -n "Hello, Git!" | sha1sum
+1d4d7d92f79dc328154dc91424e6e740f8f5a563  -
+```
+
+For the two examples above, note that one single character change to the string will produce a completely different hash.
+
+Also remember that the hash for the string "Hello, Git" is 0a2b198f595e55060dec9f0e196c10de86f2ca1c.
+
+Later we will calculate this hash again, but using `git hbas-object`, and the hashes will not match. We will understand why.
+
+--------
+
+### how many sha1 hashes can be generated
+
+git uses the sha1 algorithm to generate its hash. It outputs a 160 bit, 40 hexadecimanl characters hash.
+
+Meaning a total probabilities of 2^160 objects
+
+```
+❯ echo "2^160" | bc
+1461501637330902918203684832716283019655932542976
+(2^160 yelds 1.461.501.637.330.902.918.203.684.832.716.283.019.655.932.542.976 combinations)
+```
+------- 
+
+### how long until two sha1 hashes collide - or probability of the same hash for 2 different strings or files
+
+Probability of two sha1 hashes coliding is
+
+1/(2^320) = 4.6816764e-97 or 0.[96 zeros]4%
+
+----
+
+## the .git folder
+
+### the `objects` folder
+
+Object types
+
+- Blob
+  Files with any extensions
+
+- Tree
+  Info about directories (folders)
+
+- Commit
+  Stores different verions of the project
+
+- Annotaded tag
+  Persistent text pointer to a commit
+
+-----
+
+## git low-level commands
+
+- `git hash-object`
+
+- `git cat-files`
+
+- 
+
+----
+
+### `git hash-object`
+
+```
+❯ echo "Hello, Git" | git hash-object --stdin
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+```
+
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e is the hash for string the "Hello, Git".
+
+Nothing has changed inside .git folder, yet.
+
+```
+❯ ls -la .git/objects/
+total 16
+drwxrwxr-x 4 yuri yuri 4096 mar 27 14:09 .
+drwxrwxr-x 7 yuri yuri 4096 mar 27 14:09 ..
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 info
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 pack
+```
+-------- 
+
+### Calculating hash and storing objects on .git file system
+
+Adding the `-w` option to git hash-object.
+
+More info with `❯ man git hash-object`
+
+```
+❯ echo "Hello, Git" | git hash-object --stdin -w
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+```
+
+Checking again `.git/objects`
+
+A new folder appeared inside `.git/objects`
+
+```
+❯ ls -la .git/objects/
+total 20
+drwxrwxr-x 5 yuri yuri 4096 mar 27 14:07 .
+drwxrwxr-x 7 yuri yuri 4096 mar 27 13:50 ..
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:07 b7
+drwxrwxr-x 2 yuri yuri 4096 mar 27 13:50 info
+drwxrwxr-x 2 yuri yuri 4096 mar 27 13:50 pack
+```
+
+And inside the `b7` folder
+
+```
+❯ ls -la .git/objects/b7/
+total 12
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 .
+drwxrwxr-x 5 yuri yuri 4096 mar 27 14:09 ..
+-r--r--r-- 1 yuri yuri   27 mar 27 14:09 aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+```
+
+Note that:
+
+The string "Hello, Git" will yeld hash
+
+```
+❯ echo "Hello, Git" | git hash-object --stdin
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+```
+
+Now take a look at the folder name that appeared on the `.git/objects` folder
+
+`drwxrwxr-x 2 yuri yuri 4096 mar 27 14:07 b7`
+
+And the new object name (file) is:
+
+`-r--r--r-- 1 yuri yuri 27 mar 27 14:09 aec520dec0a7516c18eb4c68b64ae1eb9b5a5e`
+
+Thus we can conclude that on the git filesystem
+
+- the first 2 characteres from the hash is the folder name
+- and the filename is the hash however without folder's name
+
+------ 
+
+## `git cat-files`
+
+Options
+
+- `-p` Object contents
+
+Returns object contents
+
+`❯ git cat-file -p b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+Hello, Git`
+
+- `-s` Object size
+
+Returns object size in bytes
+
+`❯ git cat-file -s b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+11`
+
+- `-t` Object type
+
+Returns which type of object the hash is:
+- Blob
+- Tree
+- Commit
+- Annotaded tag
+
+`❯ git cat-file -t b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+blob`
+
+---- 
+
+### Storing files outside the repository folder on the git filesystem
+
+```
+❯ echo "this file is outside the repository folder" >  ~/Desktop/new-file.txt
+
+❯ pwd && git hash-object ../new-file.txt -w
+/home/yuri/Desktop/first-project
+d83851530645f5bd528944c5c6f7c241738f389c
+
+❯ ls -la .git/objects/
+total 24
+drwxrwxr-x 6 yuri yuri 4096 mar 27 16:00 .
+drwxrwxr-x 7 yuri yuri 4096 mar 27 14:09 ..
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 b7
+drwxrwxr-x 2 yuri yuri 4096 mar 27 16:00 d8   << new folder
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 info
+drwxrwxr-x 2 yuri yuri 4096 mar 27 14:09 pack
+
+❯ ls -la .git/objects/d8/
+total 12
+drwxrwxr-x 2 yuri yuri 4096 mar 27 16:00 .
+drwxrwxr-x 6 yuri yuri 4096 mar 27 16:00 ..
+-r--r--r-- 1 yuri yuri   57 mar 27 16:00 3851530645f5bd528944c5c6f7c241738f389c << new object inside new folder
+
+❯ git cat-file -p d838
+this file is outside the repository folder
+
+❯ git cat-file -s d838
+43
+
+❯ git cat-file -t d838
+blob
+
+```
+
+But can we simply `cat` a git object file?    
+
+**No**
+
+```
+❯ file .git/objects/b7/aec520dec0a7516c18eb4c68b64ae1eb9b5a5e 
+.git/objects/b7/aec520dec0a7516c18eb4c68b64ae1eb9b5a5e: zlib compressed data
+
+❯ file .git/objects/d8/3851530645f5bd528944c5c6f7c241738f389c 
+.git/objects/d8/3851530645f5bd528944c5c6f7c241738f389c: zlib compressed data
+```
+
+------
+
+## git objects
+
+Remember that git uses sha1 sum to create hashes.
+
+But when we calculated sha1 hash for "Hello, Git"
+
+```
+❯ echo -n "Hello, Git" | sha1sum
+0a2b198f595e55060dec9f0e196c10de86f2ca1c  -
+```
+
+and when we created a git object with contents "Hello, Git", we got a different hash
+
+```
+❯ echo "Hello, Git" | git hash-object --stdin
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e
+```
+
+That is because a git object is made of
+
+- type
+  - blob
+  
+- size
+  - 11
+ 
+- terminator
+  - \0 (null character)
+ 
+- content 
+  - "Hello, Git"
+
+Let's calculate the hash emulating a complete git object
+
+```
+❯ echo -e "blob 11\0Hello, Git" | sha1sum 
+b7aec520dec0a7516c18eb4c68b64ae1eb9b5a5e  -
+```
+
+There it is.
+
+------
+#### Remembering About hashes
+
+git is capable of storing 1.461.501.637.330.902.918.203.684.832.716.283.019.655.932.542.976 objects on each repository.
